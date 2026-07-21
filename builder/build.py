@@ -7,16 +7,20 @@ upstream can never replace good lists with corrupt ones.
 
 import argparse
 import sys
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 
-from .aggregate import collapse, render
+from .aggregate import attribute, collapse, render
 from .fetch import FetchError, fetch
 from .parse import ParseError, parse
 from .sanitize import SanitizeError, sanitize
 from .sources import MAIN_GROUP, SOURCES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+#: The generated lists live in their own directory so the repository root
+#: stays clean as more lists are added.
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "blocklists"
 
 FATAL_ERRORS = (FetchError, ParseError, SanitizeError)
 
@@ -40,28 +44,34 @@ def group_sources(sources):
 
 
 def collect(sources, fetcher=fetch, *, group=MAIN_GROUP, log=print):
-    """Fetch and parse every source in one group, returning ``(ipv4, ipv6)``."""
-    all_ipv4 = set()
-    all_ipv6 = set()
+    """Fetch and parse one group, returning ``(ipv4, ipv6)`` provenance maps.
+
+    Each map is ``{network: {source: note}}``, recording every feed an entry
+    was seen in along with whatever that feed said about it.
+    """
+    all_ipv4 = defaultdict(dict)
+    all_ipv6 = defaultdict(dict)
 
     for source in sources:
         log(f"==> [{source.group}] {source.name}: {source.url}")
         body = fetcher(source.url)
-        networks = parse(body, source.parser, name=source.name)
-        ipv4, ipv6 = sanitize(networks, name=source.name)
+        entries = parse(body, source.parser, name=source.name)
+        ipv4, ipv6 = sanitize(entries, name=source.name)
+        for network, note in ipv4.items():
+            all_ipv4[network][source.name] = note
+        for network, note in ipv6.items():
+            all_ipv6[network][source.name] = note
         log(f"    {len(ipv4)} IPv4 + {len(ipv6)} IPv6 entries")
-        all_ipv4 |= ipv4
-        all_ipv6 |= ipv6
 
     if not all_ipv4:
         raise BuildError(f"{group}: combined IPv4 set is empty")
     if not all_ipv6:
         raise BuildError(f"{group}: combined IPv6 set is empty")
 
-    return all_ipv4, all_ipv6
+    return dict(all_ipv4), dict(all_ipv6)
 
 
-def build(sources=SOURCES, fetcher=fetch, *, output_dir=REPO_ROOT, log=print):
+def build(sources=SOURCES, fetcher=fetch, *, output_dir=DEFAULT_OUTPUT_DIR, log=print):
     """Collect every group and write its list files.
 
     Nothing is written until every group has been collected successfully, so a
@@ -71,18 +81,24 @@ def build(sources=SOURCES, fetcher=fetch, *, output_dir=REPO_ROOT, log=print):
     results = OrderedDict()
 
     for group, group_sources_ in grouped.items():
-        ipv4, ipv6 = collect(group_sources_, fetcher, group=group, log=log)
-        results[group] = (collapse(ipv4), collapse(ipv6))
+        provenance = collect(group_sources_, fetcher, group=group, log=log)
+        rendered = []
+        for family in provenance:
+            cidrs = collapse(family)
+            rendered.append((len(cidrs), render(cidrs, attribute(cidrs, family))))
+        results[group] = rendered
 
     output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     written = []
-    for group, (ipv4_cidrs, ipv6_cidrs) in results.items():
-        ipv4_name, ipv6_name = output_names(group)
-        for name, cidrs in ((ipv4_name, ipv4_cidrs), (ipv6_name, ipv6_cidrs)):
+    for group, rendered in results.items():
+        names = output_names(group)
+        for name, (count, text) in zip(names, rendered):
             path = output_dir / name
-            path.write_text(render(cidrs), encoding="utf-8")
+            path.write_text(text, encoding="utf-8")
             written.append(path)
-        log(f"==> wrote {ipv4_name} ({len(ipv4_cidrs)}) and {ipv6_name} ({len(ipv6_cidrs)})")
+        counts = ", ".join(f"{n} ({c})" for n, (c, _) in zip(names, rendered))
+        log(f"==> wrote {counts}")
 
     return written
 
@@ -91,8 +107,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--output-dir",
-        default=REPO_ROOT,
-        help="directory to write the list files into (default: repo root)",
+        default=DEFAULT_OUTPUT_DIR,
+        help="directory to write the list files into (default: blocklists/)",
     )
     args = parser.parse_args(argv)
 

@@ -29,15 +29,18 @@ def is_bogon(network):
     )
 
 
-def sanitize(networks, *, name="<source>"):
-    """Split ``networks`` into ``(ipv4, ipv6)`` sets, dropping bogons.
+def sanitize(entries, *, name="<source>"):
+    """Split ``entries`` into ``(ipv4, ipv6)`` mappings, dropping bogons.
 
-    Raises :class:`SanitizeError` on an implausibly broad entry.
+    ``entries`` is a ``{network: note}`` mapping, or any iterable of networks
+    when no notes are involved. Raises :class:`SanitizeError` on an
+    implausibly broad entry.
     """
-    ipv4 = set()
-    ipv6 = set()
+    items = entries.items() if hasattr(entries, "items") else ((net, "") for net in entries)
+    ipv4 = {}
+    ipv6 = {}
 
-    for network in networks:
+    for network, note in items:
         # Bogons are checked first: a reserved or multicast supernet such as
         # 240.0.0.0/4 is junk to drop, not evidence of a poisoned feed.
         if is_bogon(network):
@@ -49,8 +52,8 @@ def sanitize(networks, *, name="<source>"):
                 f"refusing to build a list that blackholes this much address space"
             )
         if network.version == 4:
-            ipv4.add(network)
+            ipv4[network] = note
         else:
-            ipv6.add(network)
+            ipv6[network] = note
 
     return ipv4, ipv6

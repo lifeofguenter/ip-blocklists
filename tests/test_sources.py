@@ -1,7 +1,7 @@
 """Guards on the source registry itself."""
 
-from blocklists.parse import PARSERS
-from blocklists.sources import MAIN_GROUP, SOURCES, TOR_GROUP
+from builder.parse import PARSERS
+from builder.sources import MAIN_GROUP, SOURCES, TOR_GROUP
 
 EXPECTED_NAMES = {
     "alienvault_reputation",

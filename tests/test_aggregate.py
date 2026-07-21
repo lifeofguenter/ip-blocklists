@@ -2,11 +2,21 @@
 
 import ipaddress
 
-from blocklists.aggregate import collapse, render
+from builder.aggregate import attribute, collapse, render
 
 
 def nets(*cidrs):
     return {ipaddress.ip_network(cidr) for cidr in cidrs}
+
+
+def net(cidr):
+    return ipaddress.ip_network(cidr)
+
+
+def grouped(provenance):
+    """Collapse ``{network: {source: note}}`` and render it with provenance."""
+    cidrs = collapse(provenance)
+    return render(cidrs, attribute(cidrs, provenance))
 
 
 class TestCollapse:
@@ -71,3 +81,90 @@ class TestRender:
         """Stable ordering keeps the daily commit diffs meaningful."""
         cidrs = nets("9.9.9.9/32", "1.1.1.1/32", "5.5.5.5/32")
         assert render(collapse(cidrs)) == render(collapse(cidrs))
+
+
+class TestAttribution:
+    def test_credits_the_contributing_source(self):
+        result = attribute([net("1.2.3.4/32")], {net("1.2.3.4/32"): {"feed_a": ""}})
+        assert set(result[net("1.2.3.4/32")]) == {"feed_a"}
+
+    def test_a_merged_cidr_is_credited_to_every_contributor(self):
+        """Collapsing across feeds must not lose either feed's claim."""
+        provenance = {
+            net("1.2.3.0/25"): {"feed_a": ""},
+            net("1.2.3.128/25"): {"feed_b": ""},
+        }
+        cidrs = collapse(provenance)
+        assert cidrs == [net("1.2.3.0/24")]
+        assert set(attribute(cidrs, provenance)[net("1.2.3.0/24")]) == {"feed_a", "feed_b"}
+
+    def test_a_subsumed_host_route_keeps_its_source(self):
+        provenance = {
+            net("1.2.3.0/24"): {"feed_a": ""},
+            net("1.2.3.9/32"): {"feed_b": "seen scanning"},
+        }
+        cidrs = collapse(provenance)
+        assert set(attribute(cidrs, provenance)[net("1.2.3.0/24")]) == {"feed_a", "feed_b"}
+
+    def test_notes_are_collected_per_cidr(self):
+        provenance = {net("1.10.16.0/20"): {"spamhaus_drop": "SBL256894"}}
+        result = attribute([net("1.10.16.0/20")], provenance)
+        assert result[net("1.10.16.0/20")]["spamhaus_drop"] == {"SBL256894"}
+
+    def test_empty_input(self):
+        assert attribute([], {}) == {}
+
+
+class TestGroupedRender:
+    def test_one_header_per_source_combination(self):
+        text = grouped(
+            {
+                net("1.1.1.1/32"): {"feed_a": ""},
+                net("3.3.3.3/32"): {"feed_a": ""},
+                net("2.2.2.2/32"): {"feed_b": ""},
+            }
+        )
+        assert text == (
+            "# sources: feed_a\n1.1.1.1/32\n3.3.3.3/32\n\n# sources: feed_b\n2.2.2.2/32\n"
+        )
+
+    def test_comment_is_not_repeated_per_line(self):
+        """The whole point: N entries from one feed cost one comment, not N."""
+        # Spaced apart so they cannot collapse into fewer CIDRs.
+        provenance = {net(f"1.{i}.0.0/24"): {"feed_a": ""} for i in range(50)}
+        text = grouped(provenance)
+        assert text.count("# sources:") == 1
+        assert len(text.splitlines()) == 51
+
+    def test_notes_are_appended_inline_without_extra_lines(self):
+        text = grouped({net("1.10.16.0/20"): {"spamhaus_drop": "SBL256894"}})
+        assert text == "# sources: spamhaus_drop\n1.10.16.0/20  # SBL256894\n"
+
+    def test_multiple_sources_are_listed_alphabetically(self):
+        text = grouped({net("1.2.3.4/32"): {"zeta": "", "alpha": ""}})
+        assert text.startswith("# sources: alpha, zeta\n")
+
+    def test_groups_are_ordered_deterministically(self):
+        provenance = {
+            net("9.9.9.9/32"): {"zeta": ""},
+            net("1.1.1.1/32"): {"alpha": ""},
+        }
+        assert grouped(provenance) == grouped(provenance)
+        assert grouped(provenance).index("alpha") < grouped(provenance).index("zeta")
+
+    def test_output_is_still_parseable_as_a_cidr_list(self):
+        """Stripping comments must leave exactly the collapsed CIDRs."""
+        provenance = {
+            net("1.10.16.0/20"): {"spamhaus_drop": "SBL256894"},
+            net("8.8.8.8/32"): {"feed_a": ""},
+        }
+        text = grouped(provenance)
+        cidrs = [
+            line.split("#")[0].strip()
+            for line in text.splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+        assert cidrs == ["8.8.8.8/32", "1.10.16.0/20"]
+
+    def test_empty_input_renders_empty(self):
+        assert grouped({}) == ""
