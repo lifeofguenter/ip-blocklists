@@ -36,14 +36,14 @@ jobs:
       # The job then fails without touching ipv4.txt/ipv6.txt, the previous good
       # lists stay committed, and GitHub emails the failure.
       - name: Build blocklists
-        run: python -m blocklists.build
+        run: python -m builder.build
 
       - name: Commit updated lists
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ipv4.txt ipv6.txt tor_ipv4.txt tor_ipv6.txt
+          git add blocklists/
           if git diff --cached --quiet; then
             echo "Lists unchanged; nothing to commit."
             exit 0

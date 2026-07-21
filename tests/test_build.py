@@ -2,12 +2,12 @@
 
 import pytest
 
-from blocklists import build as build_module
-from blocklists.build import BuildError, build, collect, main, output_names
-from blocklists.fetch import FetchError
-from blocklists.parse import ParseError
-from blocklists.sanitize import SanitizeError
-from blocklists.sources import Source
+from builder import build as build_module
+from builder.build import BuildError, build, collect, main, output_names
+from builder.fetch import FetchError
+from builder.parse import ParseError
+from builder.sanitize import SanitizeError
+from builder.sources import Source
 
 IPV4_FEED = Source("feed_v4", "https://example.test/v4")
 IPV6_FEED = Source("feed_v6", "https://example.test/v6")
@@ -66,8 +66,10 @@ class TestGrouping:
 
     def test_tor_is_written_to_its_own_files(self, tmp_path):
         build([IPV4_FEED, IPV6_FEED, TOR_FEED], fetcher(), output_dir=tmp_path, log=quiet)
-        assert (tmp_path / "tor_ipv4.txt").read_text() == "9.9.9.9/32\n"
-        assert (tmp_path / "tor_ipv6.txt").read_text() == "2606:4700::99/128\n"
+        assert (tmp_path / "tor_ipv4.txt").read_text() == "# sources: feed_tor\n9.9.9.9/32\n"
+        assert (tmp_path / "tor_ipv6.txt").read_text() == (
+            "# sources: feed_tor\n2606:4700::99/128\n"
+        )
 
     def test_tor_entries_are_absent_from_the_main_lists(self, tmp_path):
         build([IPV4_FEED, IPV6_FEED, TOR_FEED], fetcher(), output_dir=tmp_path, log=quiet)
@@ -90,8 +92,10 @@ class TestBuildOutput:
     def test_writes_both_files(self, tmp_path):
         """1.2.3.4 and 1.2.3.5 are an aligned pair, so they collapse to a /31."""
         build([IPV4_FEED, IPV6_FEED], fetcher(), output_dir=tmp_path, log=quiet)
-        assert (tmp_path / "ipv4.txt").read_text() == "1.2.3.4/31\n"
-        assert (tmp_path / "ipv6.txt").read_text() == "2606:4700::1/128\n2606:4700::2/128\n"
+        assert (tmp_path / "ipv4.txt").read_text() == "# sources: feed_v4\n1.2.3.4/31\n"
+        assert (tmp_path / "ipv6.txt").read_text() == (
+            "# sources: feed_v6\n2606:4700::1/128\n2606:4700::2/128\n"
+        )
 
     def test_compresses_across_sources(self, tmp_path):
         """Host routes contributed by different feeds merge into one CIDR."""
@@ -106,11 +110,14 @@ class TestBuildOutput:
             "https://example.test/v6": BODIES["https://example.test/v6"],
         }
         build(sources, fetcher(bodies), output_dir=tmp_path, log=quiet)
-        assert (tmp_path / "ipv4.txt").read_text() == "1.2.3.0/30\n"
+        # The merged /30 is credited to both feeds that contributed a half.
+        assert (tmp_path / "ipv4.txt").read_text() == "# sources: a, b\n1.2.3.0/30\n"
 
     def test_handles_the_dshield_parser(self, tmp_path):
         build([DSHIELD_FEED, IPV6_FEED], fetcher(), output_dir=tmp_path, log=quiet)
-        assert (tmp_path / "ipv4.txt").read_text() == "8.8.8.0/24\n"
+        assert (tmp_path / "ipv4.txt").read_text() == (
+            "# sources: feed_dshield\n8.8.8.0/24  # x, US\n"
+        )
 
 
 class TestFailFast:

@@ -4,20 +4,33 @@ Public IP blocklists merged into deduplicated CIDR lists, rebuilt daily by GitHu
 
 | File | Contents |
 | --- | --- |
-| [`ipv4.txt`](ipv4.txt) | Abuse and attack sources, IPv4 |
-| [`ipv6.txt`](ipv6.txt) | Abuse and attack sources, IPv6 |
-| [`tor_ipv4.txt`](tor_ipv4.txt) | Tor relays, IPv4 |
-| [`tor_ipv6.txt`](tor_ipv6.txt) | Tor relays, IPv6 |
+| [`ipv4.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/ipv4.txt) | Abuse and attack sources, IPv4 |
+| [`ipv6.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/ipv6.txt) | Abuse and attack sources, IPv6 |
+| [`tor_ipv4.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/tor_ipv4.txt) | Tor relays, IPv4 |
+| [`tor_ipv6.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/tor_ipv6.txt) | Tor relays, IPv6 |
 
-One CIDR per line, nothing else — no headers, comments or timestamps. Single addresses
-are written as `1.2.3.4/32` and `2001:db8::1/128`. Tor is kept separate because blocking
-it is a policy choice, not an abuse signal.
+One CIDR per line. Single addresses are written as `1.2.3.4/32` and `2001:db8::1/128`.
+Tor is kept separate because blocking it is a policy choice, not an abuse signal.
+
+Entries are grouped under a `# sources:` header naming the feeds they came from, so the
+provenance is written once per group instead of once per line. Where a feed annotated an
+entry, that note is appended inline:
 
 ```
-1.10.16.0/20
-5.188.86.0/24
-185.220.101.0/24
+# sources: spamhaus_drop
+1.10.16.0/20  # SBL256894
+62.60.130.0/23  # SBL683637; SBL688269
+
+# sources: blocklist_de, ipsum_level3
+1.0.164.165/32
+1.15.227.58/32
 ```
+
+A CIDR is credited to every feed that supplied any part of it, so provenance survives
+merging. Strip everything from `#` onward to get a plain CIDR list.
+
+There are ~165 distinct feed combinations across ~171k entries, so the grouping costs
+about 3% in file size; a comment on every line would have cost 107%.
 
 ## Sources
 
@@ -42,9 +55,6 @@ it is a policy choice, not an abuse signal.
 
 Each feed has its own licence and terms of use.
 
-`spamhaus_edrop`, `sslbl`, `malc0de` and `darklist_de` were dropped after their upstreams
-went dead. All four were serving empty lists, so coverage was unaffected.
-
 ## Behaviour
 
 Private, loopback, link-local, multicast and reserved ranges are removed, then the
@@ -64,14 +74,14 @@ Requires Python 3.14.
 
 ```sh
 pip install -r requirements.txt
-python -m blocklists.build
+python -m builder.build          # writes blocklists/
 
 pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-Add a feed by appending a `Source` to `blocklists/sources.py` and its name to
-`tests/test_sources.py`.
+`builder/` holds the code, `blocklists/` holds the generated lists. Add a feed by
+appending a `Source` to `builder/sources.py` and its name to `tests/test_sources.py`.
 
 ## Licence
 

@@ -3,7 +3,7 @@
 import pytest
 import requests
 
-from blocklists.fetch import USER_AGENT, FetchError, fetch
+from builder.fetch import USER_AGENT, FetchError, fetch
 
 
 class FakeResponse:
