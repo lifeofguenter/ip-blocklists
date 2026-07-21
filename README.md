@@ -60,6 +60,8 @@ entries, so an occasional `403` will fail the run.
 
 ## Usage
 
+Requires Python 3.14.
+
 ```sh
 pip install -r requirements.txt
 python -m blocklists.build
