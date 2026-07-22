@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Build output. The lists are published as release assets, not committed - see
+# .github/workflows/update.yml.
+blocklists/*.txt
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Local agent tooling and working docs - not part of the published lists
+CLAUDE.md
+AGENTS.md
+.claude/
+docs/superpowers/
