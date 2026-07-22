@@ -1,16 +1,17 @@
 """Merge networks into the smallest equivalent set of CIDRs, keeping provenance.
 
-Output is grouped by which feeds an entry came from, so the source comment is
-written once per group rather than once per line. With ~170k entries falling
-into ~165 distinct feed combinations, that costs a few hundred lines instead of
-doubling the file.
+Output is one flat list in ascending address order, each entry annotated with
+the feeds it came from. Repeating the feed names per line roughly doubles the
+file, but it keeps an entry on the same line when its feeds change: grouping by
+feed combination instead made ~6k unchanged entries jump between sections on
+every run, swamping the real additions and removals in the diff.
 """
 
 import ipaddress
 from bisect import bisect_right
 from collections import defaultdict
 
-SOURCE_PREFIX = "# sources: "
+UNKNOWN_SOURCE = "unknown"
 
 
 def collapse(networks):
@@ -53,11 +54,12 @@ def attribute(cidrs, provenance):
 
 
 def render(cidrs, attribution=None):
-    """Render ``cidrs`` as text, one CIDR per line.
+    """Render ``cidrs`` as text, one CIDR per line, in ascending address order.
 
-    Without ``attribution`` this is a plain CIDR list. With it, entries are
-    grouped under a ``# sources:`` header naming the feeds they came from, and
-    any notes those feeds supplied are appended inline.
+    Without ``attribution`` this is a plain CIDR list. With it, every line
+    carries its own ``[feed, feed]`` bracket followed by whatever notes those
+    feeds supplied, so grepping the file for a single address tells you which
+    feed put it there.
     """
     ordered = sorted(cidrs)
     if not ordered:
@@ -66,19 +68,13 @@ def render(cidrs, attribution=None):
     if attribution is None:
         return "\n".join(str(cidr) for cidr in ordered) + "\n"
 
-    groups = defaultdict(list)
-    for cidr in ordered:
-        groups[tuple(sorted(attribution.get(cidr, {})))].append(cidr)
-
     lines = []
-    for sources in sorted(groups):
-        if lines:
-            lines.append("")
-        lines.append(SOURCE_PREFIX + (", ".join(sources) if sources else "unknown"))
-        for cidr in groups[sources]:
-            notes = sorted(
-                note for notes in attribution.get(cidr, {}).values() for note in notes
-            )
-            lines.append(f"{cidr}  # {'; '.join(notes)}" if notes else str(cidr))
+    for cidr in ordered:
+        sources = attribution.get(cidr, {})
+        line = f"{cidr}  # [{', '.join(sorted(sources)) if sources else UNKNOWN_SOURCE}]"
+        notes = sorted(note for notes in sources.values() for note in notes)
+        if notes:
+            line += " " + "; ".join(notes)
+        lines.append(line)
 
     return "\n".join(lines) + "\n"
