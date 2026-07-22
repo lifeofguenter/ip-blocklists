@@ -2,35 +2,37 @@
 
 Public IP blocklists merged into deduplicated CIDR lists, rebuilt daily by GitHub Actions.
 
+The lists are published as assets on the rolling [`latest`](../../releases/tag/latest)
+release, not committed to the repository, so the download URLs below never change:
+
 | File | Contents |
 | --- | --- |
-| [`ipv4.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/ipv4.txt) | Abuse and attack sources, IPv4 |
-| [`ipv6.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/ipv6.txt) | Abuse and attack sources, IPv6 |
-| [`tor_ipv4.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/tor_ipv4.txt) | Tor relays, IPv4 |
-| [`tor_ipv6.txt`](https://raw.githubusercontent.com/lifeofguenter/ip-blocklists/main/blocklists/tor_ipv6.txt) | Tor relays, IPv6 |
+| [`ipv4.txt`](../../releases/latest/download/ipv4.txt) | Abuse and attack sources, IPv4 |
+| [`ipv6.txt`](../../releases/latest/download/ipv6.txt) | Abuse and attack sources, IPv6 |
+| [`tor_ipv4.txt`](../../releases/latest/download/tor_ipv4.txt) | Tor relays, IPv4 |
+| [`tor_ipv6.txt`](../../releases/latest/download/tor_ipv6.txt) | Tor relays, IPv6 |
 
 One CIDR per line. Single addresses are written as `1.2.3.4/32` and `2001:db8::1/128`.
 Tor is kept separate because blocking it is a policy choice, not an abuse signal.
 
-Entries are grouped under a `# sources:` header naming the feeds they came from, so the
-provenance is written once per group instead of once per line. Where a feed annotated an
-entry, that note is appended inline:
+Entries are sorted by address, and each one names the feeds it came from in square
+brackets. Where a feed annotated an entry, that note follows the brackets:
 
 ```
-# sources: spamhaus_drop
-1.10.16.0/20  # SBL256894
-62.60.130.0/23  # SBL683637; SBL688269
-
-# sources: blocklist_de, ipsum_level3
-1.0.164.165/32
-1.15.227.58/32
+1.0.164.165/32  # [blocklist_de, ipsum_level3]
+1.10.16.0/20  # [spamhaus_drop] SBL256894
+1.15.227.58/32  # [blocklist_de, ipsum_level3]
+62.60.130.0/23  # [spamhaus_drop] SBL683637; SBL688269
 ```
 
 A CIDR is credited to every feed that supplied any part of it, so provenance survives
 merging. Strip everything from `#` onward to get a plain CIDR list.
 
-There are ~165 distinct feed combinations across ~171k entries, so the grouping costs
-about 3% in file size; a comment on every line would have cost 107%.
+Repeating the feed names on every line roughly doubles the file, which buys two things:
+you can grep a single address and see what flagged it, and an entry stays put when its
+feeds change. Grouping entries under shared `# sources:` headers was cheaper on disk but
+made ~6k otherwise-unchanged entries move between sections on every run, burying the real
+additions and removals in the diff.
 
 ## Sources
 
@@ -80,8 +82,9 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
-`builder/` holds the code, `blocklists/` holds the generated lists. Add a feed by
-appending a `Source` to `builder/sources.py` and its name to `tests/test_sources.py`.
+`builder/` holds the code. `blocklists/` is build output: it is git-ignored, and CI
+uploads it to the release rather than committing it. Add a feed by appending a `Source`
+to `builder/sources.py` and its name to `tests/test_sources.py`.
 
 ## Licence
 

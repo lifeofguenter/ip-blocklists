@@ -13,7 +13,7 @@ def net(cidr):
     return ipaddress.ip_network(cidr)
 
 
-def grouped(provenance):
+def attributed(provenance):
     """Collapse ``{network: {source: note}}`` and render it with provenance."""
     cidrs = collapse(provenance)
     return render(cidrs, attribute(cidrs, provenance))
@@ -115,9 +115,10 @@ class TestAttribution:
         assert attribute([], {}) == {}
 
 
-class TestGroupedRender:
-    def test_one_header_per_source_combination(self):
-        text = grouped(
+class TestAttributedRender:
+    def test_entries_are_sorted_by_address_not_grouped_by_source(self):
+        """One flat ascending list, so an entry never moves when its feeds change."""
+        text = attributed(
             {
                 net("1.1.1.1/32"): {"feed_a": ""},
                 net("3.3.3.3/32"): {"feed_a": ""},
@@ -125,46 +126,51 @@ class TestGroupedRender:
             }
         )
         assert text == (
-            "# sources: feed_a\n1.1.1.1/32\n3.3.3.3/32\n\n# sources: feed_b\n2.2.2.2/32\n"
+            "1.1.1.1/32  # [feed_a]\n"
+            "2.2.2.2/32  # [feed_b]\n"
+            "3.3.3.3/32  # [feed_a]\n"
         )
 
-    def test_comment_is_not_repeated_per_line(self):
-        """The whole point: N entries from one feed cost one comment, not N."""
+    def test_every_entry_carries_its_own_sources(self):
+        """Searching for any single IP must reveal which feed listed it."""
         # Spaced apart so they cannot collapse into fewer CIDRs.
         provenance = {net(f"1.{i}.0.0/24"): {"feed_a": ""} for i in range(50)}
-        text = grouped(provenance)
-        assert text.count("# sources:") == 1
-        assert len(text.splitlines()) == 51
+        text = attributed(provenance)
+        assert text.count("# [feed_a]") == 50
+        assert len(text.splitlines()) == 50
 
-    def test_notes_are_appended_inline_without_extra_lines(self):
-        text = grouped({net("1.10.16.0/20"): {"spamhaus_drop": "SBL256894"}})
-        assert text == "# sources: spamhaus_drop\n1.10.16.0/20  # SBL256894\n"
+    def test_notes_follow_the_source_bracket_on_the_same_line(self):
+        text = attributed({net("1.10.16.0/20"): {"spamhaus_drop": "SBL256894"}})
+        assert text == "1.10.16.0/20  # [spamhaus_drop] SBL256894\n"
 
-    def test_multiple_sources_are_listed_alphabetically(self):
-        text = grouped({net("1.2.3.4/32"): {"zeta": "", "alpha": ""}})
-        assert text.startswith("# sources: alpha, zeta\n")
+    def test_multiple_sources_are_listed_alphabetically_in_one_bracket(self):
+        text = attributed({net("1.2.3.4/32"): {"zeta": "n2", "alpha": "n1"}})
+        assert text == "1.2.3.4/32  # [alpha, zeta] n1; n2\n"
 
-    def test_groups_are_ordered_deterministically(self):
+    def test_entries_without_any_source_are_marked_unknown(self):
+        assert render([net("1.2.3.4/32")], {}) == "1.2.3.4/32  # [unknown]\n"
+
+    def test_output_is_ordered_deterministically(self):
         provenance = {
             net("9.9.9.9/32"): {"zeta": ""},
             net("1.1.1.1/32"): {"alpha": ""},
         }
-        assert grouped(provenance) == grouped(provenance)
-        assert grouped(provenance).index("alpha") < grouped(provenance).index("zeta")
+        assert attributed(provenance) == attributed(provenance)
+        assert attributed(provenance).index("1.1.1.1") < attributed(provenance).index("9.9.9.9")
 
     def test_output_is_still_parseable_as_a_cidr_list(self):
-        """Stripping comments must leave exactly the collapsed CIDRs."""
+        """Stripping comments must leave exactly the collapsed CIDRs, in order."""
         provenance = {
             net("1.10.16.0/20"): {"spamhaus_drop": "SBL256894"},
             net("8.8.8.8/32"): {"feed_a": ""},
         }
-        text = grouped(provenance)
+        text = attributed(provenance)
         cidrs = [
             line.split("#")[0].strip()
             for line in text.splitlines()
             if line.strip() and not line.startswith("#")
         ]
-        assert cidrs == ["8.8.8.8/32", "1.10.16.0/20"]
+        assert cidrs == ["1.10.16.0/20", "8.8.8.8/32"]
 
     def test_empty_input_renders_empty(self):
-        assert grouped({}) == ""
+        assert attributed({}) == ""

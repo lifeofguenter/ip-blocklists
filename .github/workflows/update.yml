@@ -33,20 +33,34 @@ jobs:
         run: pip install --requirement requirements.txt
 
       # Any unreachable, unparsable, empty or poisoned feed exits non-zero here.
-      # The job then fails without touching ipv4.txt/ipv6.txt, the previous good
-      # lists stay committed, and GitHub emails the failure.
+      # The job then fails before the upload step, so the assets already attached
+      # to the release stay in place and GitHub emails the failure.
       - name: Build blocklists
         run: python -m builder.build
 
-      - name: Commit updated lists
+      # The lists are published as release assets rather than committed. A 6 MB
+      # file churning ~30k lines a day would add roughly a gigabyte of objects to
+      # the repository each year, and would bury real changes under a daily
+      # "chore: update" commit. Assets live outside git, so neither happens.
+      - name: Publish lists to the rolling release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: latest
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add blocklists/
-          if git diff --cached --quiet; then
-            echo "Lists unchanged; nothing to commit."
-            exit 0
+
+          notes="Rebuilt $(date -u +%Y-%m-%dT%H:%MZ) from \`${GITHUB_SHA:0:7}\`."$'\n\n'
+          notes+="| File | Entries |"$'\n'"| --- | --- |"$'\n'
+          for file in blocklists/*.txt; do
+            notes+="| \`$(basename "$file")\` | $(wc -l < "$file" | tr -d ' ') |"$'\n'
+          done
+
+          # The tag is created once and then reused, so the download URL below
+          # stays stable forever:
+          #   <repo>/releases/latest/download/ipv4.txt
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Latest blocklists" --notes "$notes"
           fi
-          git commit -m "chore: update blocklists ($(date -u +%Y-%m-%dT%H:%MZ))"
-          git push
+
+          gh release upload "$TAG" blocklists/*.txt --clobber
+          gh release edit "$TAG" --notes "$notes"
