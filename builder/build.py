@@ -11,10 +11,11 @@ from collections import OrderedDict, defaultdict
 from pathlib import Path
 
 from .aggregate import attribute, collapse, render
+from .allowlist import subtract
 from .fetch import FetchError, fetch
 from .parse import ParseError, parse
 from .sanitize import SanitizeError, sanitize
-from .sources import MAIN_GROUP, SOURCES
+from .sources import ALLOWLISTS, MAIN_GROUP, SOURCES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -53,7 +54,7 @@ def collect(sources, fetcher=fetch, *, group=MAIN_GROUP, log=print):
     all_ipv6 = defaultdict(dict)
 
     for source in sources:
-        log(f"==> [{source.group}] {source.name}: {source.url}")
+        log(f"==> [{group}] {source.name}: {source.url}")
         body = fetcher(source.url)
         entries = parse(body, source.parser, name=source.name)
         ipv4, ipv6 = sanitize(entries, name=source.name)
@@ -71,19 +72,41 @@ def collect(sources, fetcher=fetch, *, group=MAIN_GROUP, log=print):
     return dict(all_ipv4), dict(all_ipv6)
 
 
-def build(sources=SOURCES, fetcher=fetch, *, output_dir=DEFAULT_OUTPUT_DIR, log=print):
+def build(
+    sources=SOURCES,
+    fetcher=fetch,
+    *,
+    allowlists=ALLOWLISTS,
+    output_dir=DEFAULT_OUTPUT_DIR,
+    log=print,
+):
     """Collect every group and write its list files.
 
-    Nothing is written until every group has been collected successfully, so a
-    failed run leaves all previous lists untouched.
+    Trusted ranges from ``allowlists`` are subtracted from the main group before
+    it is rendered, so a host flagged for abuse while it sits in a provider's
+    address space is not blackholed. The Tor group is left untouched. Passing no
+    allowlists disables subtraction.
+
+    Nothing is written until every group and the allowlists have been collected
+    successfully, so a failed run leaves all previous lists untouched.
     """
     grouped = group_sources(sources)
-    results = OrderedDict()
 
+    # Collected up front so a broken or poisoned allow feed aborts before any
+    # blocklist work, and collapsed into a disjoint set per family.
+    allow = {4: [], 6: []}
+    if allowlists:
+        allow_v4, allow_v6 = collect(allowlists, fetcher, group="allowlist", log=log)
+        allow = {4: collapse(allow_v4), 6: collapse(allow_v6)}
+
+    results = OrderedDict()
     for group, group_sources_ in grouped.items():
-        provenance = collect(group_sources_, fetcher, group=group, log=log)
+        ipv4, ipv6 = collect(group_sources_, fetcher, group=group, log=log)
+        if group == MAIN_GROUP:
+            ipv4 = subtract(ipv4, allow[4])
+            ipv6 = subtract(ipv6, allow[6])
         rendered = []
-        for family in provenance:
+        for family in (ipv4, ipv6):
             cidrs = collapse(family)
             rendered.append((len(cidrs), render(cidrs, attribute(cidrs, family))))
         results[group] = rendered

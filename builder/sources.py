@@ -40,6 +40,20 @@ class Source:
     group: str = MAIN_GROUP
 
 
+#: Trusted ranges subtracted from the main lists. These are first-party cloud
+#: feeds: a host flagged for abuse while it sits in this space is not blackholed,
+#: because the range belongs to a provider, not the attacker. Fetched, parsed and
+#: sanitized exactly like a blocklist feed, so a failure aborts the build and the
+#: broad-prefix guard in :mod:`builder.sanitize` rejects a poisoned allow feed.
+#: The ``group`` field is unused here; allowlists are never routed by group.
+ALLOWLISTS = (
+    Source("aws", "https://ip-ranges.amazonaws.com/ip-ranges.json", "aws"),
+    Source("gcp", "https://www.gstatic.com/ipranges/cloud.json", "gcp"),
+    Source("bunny_ipv4", "https://bunnycdn.com/api/system/edgeserverlist", "bunny"),
+    Source("bunny_ipv6", "https://bunnycdn.com/api/system/edgeserverlist/ipv6", "bunny"),
+)
+
+
 SOURCES = (
     Source("alienvault_reputation", "https://reputation.alienvault.com/reputation.generic"),
     Source("bds_atif", "https://www.binarydefense.com/banlist.txt"),

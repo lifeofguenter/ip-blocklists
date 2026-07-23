@@ -57,6 +57,27 @@ additions and removals in the diff.
 
 Each feed has its own licence and terms of use.
 
+## Allowlists
+
+Feeds sometimes flag a host that sits in a major cloud's published address space.
+Blackholing it punishes the provider, not the attacker, so the ranges below are
+fetched daily and *subtracted* from the main `ipv4.txt`/`ipv6.txt` before they are
+written. Where a blocklist entry only partly overlaps an allow range, the
+overlapping part is carved out and the rest is kept.
+
+| Name | Feed |
+| --- | --- |
+| `aws` | https://ip-ranges.amazonaws.com/ip-ranges.json |
+| `gcp` | https://www.gstatic.com/ipranges/cloud.json |
+| `bunny_ipv4` | https://bunnycdn.com/api/system/edgeserverlist |
+| `bunny_ipv6` | https://bunnycdn.com/api/system/edgeserverlist/ipv6 |
+
+The Tor lists are left untouched: blocking Tor is a policy choice, so a relay
+hosted on a cloud is still a relay you chose to block. Allow feeds are fetched,
+parsed and sanitized exactly like blocklist feeds, so a failure aborts the run,
+and the same broad-prefix guard rejects a poisoned allow feed — one serving, say,
+`0.0.0.0/0` — rather than letting it un-block the internet.
+
 ## Behaviour
 
 Private, loopback, link-local, multicast and reserved ranges are removed, then the
@@ -83,8 +104,10 @@ python -m pytest
 ```
 
 `builder/` holds the code. `blocklists/` is build output: it is git-ignored, and CI
-uploads it to the release rather than committing it. Add a feed by appending a `Source`
-to `builder/sources.py` and its name to `tests/test_sources.py`.
+uploads it to the release rather than committing it. Add a blocklist feed by appending
+a `Source` to `SOURCES` in `builder/sources.py` and its name to `tests/test_sources.py`;
+add an allowlist feed the same way via `ALLOWLISTS`. JSON feeds need a parser in
+`builder/parse.py`.
 
 ## Licence
 

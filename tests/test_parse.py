@@ -159,6 +159,75 @@ class TestDshieldFormat:
         assert entries[ipaddress.ip_network("185.220.101.0/24")] == "Other Net, DE"
 
 
+class TestJsonFormats:
+    def test_aws_ip_ranges(self):
+        """AWS publishes ip_prefix and ipv6_prefix under two separate keys."""
+        text = (
+            '{"syncToken":"1","prefixes":['
+            '{"ip_prefix":"3.4.12.4/32","service":"AMAZON"},'
+            '{"ip_prefix":"52.94.0.0/22","service":"EC2"}],'
+            '"ipv6_prefixes":[{"ipv6_prefix":"2600:1f00::/40"}]}'
+        )
+        assert networks_in(text, "aws") == nets(
+            "3.4.12.4/32", "52.94.0.0/22", "2600:1f00::/40"
+        )
+
+    def test_gcp_cloud_json(self):
+        """GCP tags each prefix with either ipv4Prefix or ipv6Prefix."""
+        text = (
+            '{"syncToken":"1","prefixes":['
+            '{"ipv4Prefix":"34.1.208.0/20","scope":"africa-south1"},'
+            '{"ipv6Prefix":"2600:1900::/28","scope":"us-central1"},'
+            '{"ipv4Prefix":"34.152.86.0/23"}]}'
+        )
+        assert networks_in(text, "gcp") == nets(
+            "34.1.208.0/20", "2600:1900::/28", "34.152.86.0/23"
+        )
+
+    def test_bunny_bare_ip_array(self):
+        """BunnyCDN returns a plain JSON array of addresses, no CIDR suffix."""
+        text = '["89.187.188.227","89.187.162.249","2400:52e0:1500::714:1"]'
+        assert networks_in(text, "bunny") == nets(
+            "89.187.188.227/32", "89.187.162.249/32", "2400:52e0:1500::714:1/128"
+        )
+
+    def test_json_entries_carry_no_note(self):
+        entries = parse('["1.2.3.4"]', "bunny")
+        assert entries[ipaddress.ip_network("1.2.3.4/32")] == ""
+
+    def test_json_host_bits_are_tolerated(self):
+        assert networks_in('{"prefixes":[{"ipv4Prefix":"1.2.3.4/24"}]}', "gcp") == nets(
+            "1.2.3.0/24"
+        )
+
+
+class TestJsonFailFast:
+    def test_invalid_json_is_rejected(self):
+        with pytest.raises(ParseError, match="valid JSON"):
+            parse("<html>503</html>\n", "aws", name="aws")
+
+    def test_aws_shape_drift_is_rejected(self):
+        """A renamed or missing top-level key must fail, not silently yield nothing."""
+        with pytest.raises(ParseError, match="format may have changed"):
+            parse('{"unexpected":[]}', "aws", name="aws")
+
+    def test_gcp_shape_drift_is_rejected(self):
+        with pytest.raises(ParseError, match="format may have changed"):
+            parse('{"unexpected":[]}', "gcp", name="gcp")
+
+    def test_empty_json_feed_is_rejected(self):
+        with pytest.raises(ParseError, match="zero IPs"):
+            parse('{"prefixes":[],"ipv6_prefixes":[]}', "aws", name="aws")
+
+    def test_empty_bunny_array_is_rejected(self):
+        with pytest.raises(ParseError, match="zero IPs"):
+            parse("[]", "bunny", name="bunny")
+
+    def test_json_error_message_names_the_source(self):
+        with pytest.raises(ParseError, match="my_feed"):
+            parse("not json", "aws", name="my_feed")
+
+
 class TestFailFast:
     def test_html_error_page_is_rejected(self):
         text = (
