@@ -13,9 +13,14 @@ Two line formats cover every source we consume:
     Whitespace-separated columns ``startIP endIP netmask nattacks name country``
     which are recombined into ``startIP/netmask``, with the name and country
     columns kept as the note.
+
+The allowlist feeds are JSON rather than line-oriented, so they use their own
+document parsers (``aws``, ``gcp``, ``bunny``). These carry no notes: an allow
+range only needs its address, not a reason.
 """
 
 import ipaddress
+import json
 import re
 
 COMMENT_MARKERS = ("#", ";", "//")
@@ -71,7 +76,67 @@ def _parse_dshield(line, raw_line):
     return network, note[:MAX_NOTE_LENGTH]
 
 
-PARSERS = {"plain": _parse_plain, "dshield": _parse_dshield}
+#: Line parsers see one ``(stripped, raw)`` line at a time. JSON parsers see the
+#: whole decoded document and yield address strings.
+LINE_PARSERS = {"plain": _parse_plain, "dshield": _parse_dshield}
+
+
+def _json_aws(doc):
+    for prefix in doc["prefixes"]:
+        yield prefix["ip_prefix"]
+    for prefix in doc["ipv6_prefixes"]:
+        yield prefix["ipv6_prefix"]
+
+
+def _json_gcp(doc):
+    for prefix in doc["prefixes"]:
+        yield prefix["ipv4Prefix"] if "ipv4Prefix" in prefix else prefix["ipv6Prefix"]
+
+
+def _json_bunny(doc):
+    #: A bare JSON array of addresses. Anything else is treated as shape drift.
+    if not isinstance(doc, list):
+        raise TypeError("bunny feed is not a JSON array")
+    yield from doc
+
+
+JSON_PARSERS = {"aws": _json_aws, "gcp": _json_gcp, "bunny": _json_bunny}
+
+#: Every known parser, so callers can validate a source's parser name up front.
+PARSERS = {**LINE_PARSERS, **JSON_PARSERS}
+
+
+def _parse_json(text, extract, *, name):
+    """Decode a JSON feed and return ``{network: ""}`` for its addresses.
+
+    Raises :class:`ParseError` on a body that is not JSON, a document whose
+    shape no longer matches (a missing or renamed key), or one that yields no
+    usable address at all.
+    """
+    try:
+        doc = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ParseError(f"{name}: body is not valid JSON ({error})") from None
+
+    try:
+        tokens = list(extract(doc))
+    except (KeyError, TypeError, AttributeError) as error:
+        raise ParseError(
+            f"{name}: JSON shape not recognised ({error}) - feed format may have changed"
+        ) from None
+
+    entries = {}
+    for token in tokens:
+        try:
+            network = ipaddress.ip_network(token, strict=False)
+        except (ValueError, TypeError):
+            continue
+        entries.setdefault(network, "")
+
+    if not entries:
+        raise ParseError(f"{name}: feed yielded zero IPs")
+
+    return entries
 
 
 def parse(text, parser="plain", *, name="<source>", min_ratio=MIN_PARSE_RATIO):
@@ -81,8 +146,11 @@ def parse(text, parser="plain", *, name="<source>", min_ratio=MIN_PARSE_RATIO):
     Raises :class:`ParseError` if the feed has no data lines, yields no IPs, or
     too many of its lines fail to parse.
     """
+    if parser in JSON_PARSERS:
+        return _parse_json(text, JSON_PARSERS[parser], name=name)
+
     try:
-        parse_line = PARSERS[parser]
+        parse_line = LINE_PARSERS[parser]
     except KeyError:
         raise ParseError(f"{name}: unknown parser {parser!r}") from None
 
