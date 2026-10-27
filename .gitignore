@@ -1,3 +1,8 @@
+.DS_Store
+/.idea/
+/.env
+/.playwright-mcp/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -10,9 +15,7 @@ venv/
 # .github/workflows/update.yml.
 blocklists/*.txt
 
-# Editors / OS
-.DS_Store
-.idea/
+# Editors
 .vscode/
 
 # Local agent tooling and working docs - not part of the published lists

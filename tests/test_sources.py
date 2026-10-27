@@ -1,5 +1,7 @@
 """Guards on the source registry itself."""
 
+from urllib.parse import urlsplit
+
 from builder.parse import PARSERS
 from builder.sources import ALLOWLISTS, MAIN_GROUP, SOURCES, TOR_GROUP
 
@@ -12,21 +14,31 @@ EXPECTED_NAMES = {
     "blocklist_net_ua",
     "bruteforceblocker",
     "ciarmy",
-    "cruzit_web_attacks",
     "dm_tor",
     "dshield",
     "et_compromised",
     "feodo",
     "greensnow",
     "ipsum_level3",
-    "nixspam",
     "spamhaus_drop",
-    "yoyo_adservers",
 }
 
 #: Upstreams that went dead and were deliberately dropped. Guarding against
 #: their reintroduction keeps a well-meaning revert from breaking the build.
-RETIRED_NAMES = {"spamhaus_edrop", "sslbl", "malc0de", "darklist_de"}
+RETIRED_NAMES = {
+    "spamhaus_edrop",
+    "sslbl",
+    "malc0de",
+    "darklist_de",
+    "cruzit_web_attacks",
+    "nixspam",
+}
+
+#: Content-category feeds (ads, adult, gambling) that were dropped because these
+#: lists block attackers, not content. Matched by name and by URL so the same
+#: feed cannot come back under another name.
+OUT_OF_SCOPE_NAMES = {"yoyo_adservers"}
+OUT_OF_SCOPE_HOSTS = {"pgl.yoyo.org"}
 
 
 def test_registry_matches_the_configured_feeds():
@@ -35,6 +47,11 @@ def test_registry_matches_the_configured_feeds():
 
 def test_retired_feeds_are_not_reintroduced():
     assert {source.name for source in SOURCES}.isdisjoint(RETIRED_NAMES)
+
+
+def test_content_category_feeds_are_not_reintroduced():
+    assert {source.name for source in SOURCES}.isdisjoint(OUT_OF_SCOPE_NAMES)
+    assert {urlsplit(source.url).hostname for source in SOURCES}.isdisjoint(OUT_OF_SCOPE_HOSTS)
 
 
 def test_names_are_unique():
