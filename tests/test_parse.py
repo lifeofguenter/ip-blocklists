@@ -40,12 +40,12 @@ class TestStripComment:
 
 class TestPlainFormats:
     def test_bare_ip_list(self):
-        """blocklist_de / ciarmy / et_compromised / yoyo style."""
+        """blocklist_de / ciarmy / et_compromised style."""
         text = "1.2.3.4\n5.6.7.8\n9.10.11.12\n"
         assert networks_in(text) == nets("1.2.3.4/32", "5.6.7.8/32", "9.10.11.12/32")
 
     def test_firehol_ipset(self):
-        """bruteforceblocker / cruzit_web_attacks / nixspam style."""
+        """blocklist_net_ua / bruteforceblocker style."""
         text = (
             "#\n"
             "# bruteforceblocker\n"

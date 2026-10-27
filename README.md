@@ -2,6 +2,11 @@
 
 Public IP blocklists merged into deduplicated CIDR lists, rebuilt daily by GitHub Actions.
 
+The lists are for keeping attackers away from servers: brute force, scanning, exploit
+attempts, botnets, hijacked netblocks. They are not a content filter for home networks.
+Ad, tracking, adult and gambling servers are deliberately left out, and a feed that
+lists them does not belong here however good its data is.
+
 The lists are published as assets on the rolling [`latest`](../../releases/tag/latest)
 release, not committed to the repository, so the download URLs below never change:
 
@@ -44,15 +49,12 @@ additions and removals in the diff.
 | `blocklist_net_ua` | https://iplists.firehol.org/files/blocklist_net_ua.ipset |
 | `bruteforceblocker` | https://iplists.firehol.org/files/bruteforceblocker.ipset |
 | `ciarmy` | https://cinsscore.com/list/ci-badguys.txt |
-| `cruzit_web_attacks` | https://iplists.firehol.org/files/cruzit_web_attacks.ipset |
 | `dshield` | https://feeds.dshield.org/block.txt |
 | `et_compromised` | https://rules.emergingthreats.net/blockrules/compromised-ips.txt |
 | `feodo` | https://feodotracker.abuse.ch/downloads/ipblocklist.txt |
 | `greensnow` | https://blocklist.greensnow.co/greensnow.txt |
 | `ipsum_level3` | https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt |
-| `nixspam` | https://iplists.firehol.org/files/nixspam.ipset |
 | `spamhaus_drop` | https://www.spamhaus.org/drop/drop.txt |
-| `yoyo_adservers` | https://pgl.yoyo.org/adservers/iplist.php |
 | `dm_tor` (Tor) | https://www.dan.me.uk/torlist/ |
 
 Each feed has its own licence and terms of use.
@@ -93,7 +95,7 @@ entries, so an occasional `403` will fail the run.
 
 ## Usage
 
-Requires Python 3.14.
+Requires Python 3.15.
 
 ```sh
 pip install -r requirements.txt

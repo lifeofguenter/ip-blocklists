@@ -13,6 +13,23 @@ publishing any entries at all:
     Still regenerates daily but publishes an empty list.
 
 ``greensnow``, ``ipsum_level3`` and ``blocklist_net_ua`` replace them.
+
+Feeds removed because the FireHOL mirror stopped updating them, so they kept
+serving a frozen snapshot that passed every check in :mod:`builder.sanitize`:
+
+``cruzit_web_attacks``
+    Frozen since 2023-09-22; ``cruzit.com`` is now a parked domain.
+``nixspam``
+    Frozen since 2021-09-10, although upstream drops each address after 12
+    hours; the NiX Spam download host no longer resolves. Spam senders are
+    also out of scope, see below.
+
+Feeds removed because they list content rather than attackers:
+
+``yoyo_adservers``
+    Ad and tracking servers, mostly CDN edge addresses. These lists protect
+    servers from hosts that attack them; ad, adult and gambling servers are
+    out of scope however unwanted they are on a home network.
 """
 
 from dataclasses import dataclass
@@ -61,18 +78,11 @@ SOURCES = (
     Source("blocklist_net_ua", "https://iplists.firehol.org/files/blocklist_net_ua.ipset"),
     Source("bruteforceblocker", "https://iplists.firehol.org/files/bruteforceblocker.ipset"),
     Source("ciarmy", "https://cinsscore.com/list/ci-badguys.txt"),
-    Source("cruzit_web_attacks", "https://iplists.firehol.org/files/cruzit_web_attacks.ipset"),
     Source("dm_tor", "https://www.dan.me.uk/torlist/", group=TOR_GROUP),
     Source("dshield", "https://feeds.dshield.org/block.txt", "dshield"),
     Source("et_compromised", "https://rules.emergingthreats.net/blockrules/compromised-ips.txt"),
     Source("feodo", "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"),
     Source("greensnow", "https://blocklist.greensnow.co/greensnow.txt"),
     Source("ipsum_level3", "https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt"),
-    Source("nixspam", "https://iplists.firehol.org/files/nixspam.ipset"),
     Source("spamhaus_drop", "https://www.spamhaus.org/drop/drop.txt"),
-    Source(
-        "yoyo_adservers",
-        "https://pgl.yoyo.org/adservers/iplist.php"
-        "?ipformat=plain&showintro=0&mimetype=plaintext",
-    ),
 )
